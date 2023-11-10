@@ -4,6 +4,8 @@ Tests for models.
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
+from core.models import Account, ActiveAccount
+
 
 def create_user(email="test@example.com",
                 username='test123',
@@ -56,3 +58,30 @@ class MotelTest(TestCase):
 
         self.assertTrue(user.is_superuser)
         self.assertTrue(user.is_staff)
+
+    def test_create_account_for_user(self):
+        """Test creating an account for a user"""
+        user = get_user_model().objects.create_user(
+            'test@user.com',
+            'testuser',
+            'test123'
+        )
+        account = Account.objects.create(user=user, name='Savings')
+
+        self.assertEqual(account.user, user)
+        self.assertEqual(account.name, 'Savings')
+        self.assertEqual(account.balance, 0)
+
+    def test_create_active_account_for_user(self):
+        """Test creating an active account for a user"""
+        user = get_user_model().objects.create_user(
+            'test@user.com',
+            'testuser',
+            'test123'
+        )
+        active = ActiveAccount.objects.get(user=user)
+        account = Account.objects.get(pk=active.account.id)
+
+        self.assertEqual(active.user, user)
+        self.assertEqual(active.account, account)
+

@@ -4,6 +4,7 @@ from django.contrib.auth.models import (
     BaseUserManager,
     PermissionsMixin
 )
+from django.conf import settings
 
 
 class UserManager(BaseUserManager):
@@ -19,7 +20,8 @@ class UserManager(BaseUserManager):
             )
         user.set_password(password)
         user.save(using=self._db)
-
+        account = Account.objects.create(user=user, name='Base')
+        ActiveAccount.objects.create(user=user, account=account)
         return user
 
     def create_superuser(self, email, username, password, **extra_fields):
@@ -41,9 +43,38 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     balacne = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     objects = UserManager()
 
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
     EMAIL_FIELD = 'email'
+
+
+class Account(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                on_delete=models.CASCADE)
+    name = models.CharField(max_length=255)
+    balance = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.user.username}'s account: {self.name}"
+
+
+class ActiveAccount(models.Model):
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='active_account'
+    )
+    account = models.OneToOneField(
+        'Account',  # Assuming 'Account' is your account model
+        on_delete=models.CASCADE,
+        related_name='active_for_user'
+    )
+
+    def __str__(self):
+        return f"{self.user.username}'s active account: {self.account.name}"
