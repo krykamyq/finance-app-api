@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'core',
     'rest_framework',
     'drf_spectacular',
+    'rest_framework.authtoken',
+    'user',
 ]
 
 MIDDLEWARE = [
@@ -141,3 +143,13 @@ REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema'
 }
 
+SPECTACULAR_SETTINGS = {
+     'TITLE': 'Finance API',
+    'DESCRIPTION': 'Your API Description',
+    'VERSION': '1.0.0',
+    # Token Authentication configuration
+    'SECURITY': [
+        {'Token': []}
+    ],
+    'COMPONENT_SPLIT_REQUEST': True,
+}
