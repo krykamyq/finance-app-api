@@ -38,7 +38,6 @@ class User(AbstractBaseUser, PermissionsMixin):
     """User in the system."""
     email = models.EmailField(max_length=255, unique=True)
     username = models.CharField(max_length=255, unique=True)
-    name = models.CharField(max_length=255)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     balacne = models.DecimalField(max_digits=10, decimal_places=2, default=0)
@@ -50,6 +49,10 @@ class User(AbstractBaseUser, PermissionsMixin):
     USERNAME_FIELD = 'username'
     REQUIRED_FIELDS = ['email']
     EMAIL_FIELD = 'email'
+
+    def __str__(self):
+        return self.username
+
 
 
 class Account(models.Model):
