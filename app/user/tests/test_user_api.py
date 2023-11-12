@@ -149,7 +149,7 @@ class PrivateUserApiTests(APITestCase):
         self.assertEqual(res.data, {
             'email': self.user.email,
             'username': self.user.username,
-            'balance': '0.00'
+            'balance': '0.00',
         })
 
     def test_post_me_not_allowed(self):
@@ -194,7 +194,7 @@ class PrivateUserApiTests(APITestCase):
             'account': {
                 'id': account.id,
                 'name': account.name,
-                'balance': str(account.balance),  # Convert balance to string
+                'balance': str(account.balance)
         }
     })
 

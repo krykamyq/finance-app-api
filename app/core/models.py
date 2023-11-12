@@ -56,6 +56,7 @@ class User(AbstractBaseUser, PermissionsMixin):
 
 
 class Account(models.Model):
+    """Account model"""
     user = models.ForeignKey(settings.AUTH_USER_MODEL,
                                 on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
@@ -68,6 +69,7 @@ class Account(models.Model):
 
 
 class ActiveAccount(models.Model):
+    """Active account model"""
     user = models.OneToOneField(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
@@ -81,3 +83,23 @@ class ActiveAccount(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s active account: {self.account.name}"
+
+class Transaction(models.Model):
+    """Transaction model"""
+    INCOME = 'income'
+    EXPENSE = 'expense'
+    TRANSACTION_TYPE_CHOICES = [
+        (INCOME, 'Income'),
+        (EXPENSE, 'Expense'),
+    ]
+
+    account = models.ForeignKey(Account, on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField()
+    description = models.CharField(max_length=255, blank=True)
+    transaction_type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"{self.account.name} - {self.amount} - {self.transaction_type}"

@@ -4,7 +4,7 @@ Tests for models.
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
-from core.models import Account, ActiveAccount
+from core.models import Account, ActiveAccount, Transaction
 
 
 def create_user(email="test@example.com",
@@ -84,4 +84,24 @@ class MotelTest(TestCase):
 
         self.assertEqual(active.user, user)
         self.assertEqual(active.account, account)
+
+    def test_create_transaction(self):
+        """Test creating a transaction is successful"""
+        user = create_user()
+        active = ActiveAccount.objects.get(user=user).account
+        transaction = Transaction.objects.create(
+            account=active,
+            amount=100,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.INCOME
+        )
+
+        self.assertEqual(transaction.account, active)
+        self.assertEqual(transaction.amount, 100)
+        self.assertEqual(transaction.description, 'Test Transaction')
+        self.assertEqual(transaction.transaction_type, Transaction.INCOME)
+
+    # You can add more tests for other model methods or behaviors
+
 

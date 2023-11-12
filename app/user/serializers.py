@@ -10,6 +10,7 @@ from core.models import ActiveAccount, Account
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for the user object"""
+
     class Meta:
         model = get_user_model()
         fields = ('email', 'username', 'password', 'balance')
@@ -87,7 +88,7 @@ class AuthtokenSerializer(serializers.Serializer):
             password=password,
         )
         if not user:
-            msg = _('Unable to authenticate with proviided credentials.')
+            msg = _('Unable to authenticate with provided credentials.')
             raise serializers.ValidationError(msg, code='autorization')
 
         attrs['user'] = user
