@@ -6,6 +6,7 @@ from user.views import (
     CreateUserView,
     ManageUserView,
     ActiveAccountView,
+    AccountListView,
 )
 
 app_name = 'user'
@@ -15,4 +16,5 @@ urlpatterns = [
     path('token/', CreateTokenView.as_view(), name='token'),
     path('me/', ManageUserView.as_view(), name='me'),
     path('active-account/', ActiveAccountView.as_view(), name='active-account'),
+    path('accounts/', AccountListView.as_view(), name='accounts'),
     ]

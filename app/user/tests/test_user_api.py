@@ -13,6 +13,7 @@ CREATE_USER_URL = reverse('user:create')
 TOKEN_URL = reverse('user:token')
 ACTIVE_ACCOUNT_URL = reverse('user:active-account')
 ME_URL = reverse('user:me')
+ACCOUNTS_URL = reverse('user:accounts')
 def create_user(**params):
     """Create and return new user."""
     return get_user_model().objects.create_user(**params)
@@ -196,6 +197,23 @@ class PrivateUserApiTests(APITestCase):
                 'balance': str(account.balance),  # Convert balance to string
         }
     })
+
+    def test_list_accounts(self):
+        """Test listing accounts for authenticated user"""
+        account2 = Account.objects.create(user=self.user, name='Checking', balance=100)
+
+        res = self.client.get(ACCOUNTS_URL)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(res.data), 3)
+        account_names = {account['name'] for account in res.data}
+        self.assertIn(self.account1.name, account_names)
+        self.assertIn(account2.name, account_names)
+        accoutn_ids = {account['id'] for account in res.data}
+        self.assertIn(self.account1.id, accoutn_ids)
+        self.assertIn(account2.id, accoutn_ids)
+
+
+
 
 
 

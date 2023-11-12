@@ -10,9 +10,10 @@ from user.serializers import (
     AuthtokenSerializer,
     ActiveAccountSerializer,
     ChangeActiveAccountSerializer,
+    AccountSerializer,
 
 )
-from core.models import ActiveAccount
+from core.models import ActiveAccount, Account
 
 
 class CreateUserView(generics.CreateAPIView):
@@ -66,4 +67,13 @@ class ActiveAccountView(
     @extend_schema(request=ChangeActiveAccountSerializer, methods=['PUT', 'PATCH'])
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
+
+class AccountListView(generics.ListAPIView):
+    """List all accounts for a user."""
+    serializer_class = AccountSerializer
+    authentication_classes = [authentication.TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get_queryset(self):
+        return Account.objects.filter(user=self.request.user).order_by('-id')
 
