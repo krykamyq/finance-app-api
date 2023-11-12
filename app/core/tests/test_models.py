@@ -7,6 +7,7 @@ from django.contrib.auth import get_user_model
 from core.models import Account, ActiveAccount, Transaction
 
 
+
 def create_user(email="test@example.com",
                 username='test123',
                 password="test123"
@@ -101,7 +102,5 @@ class MotelTest(TestCase):
         self.assertEqual(transaction.amount, 100)
         self.assertEqual(transaction.description, 'Test Transaction')
         self.assertEqual(transaction.transaction_type, Transaction.INCOME)
-
-    # You can add more tests for other model methods or behaviors
 
 

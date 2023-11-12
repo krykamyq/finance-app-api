@@ -137,3 +137,17 @@ class Transaction(models.Model):
 
             self.account.save()
             super(Transaction, self).save(*args, **kwargs)
+    def delete(self, *args, **kwargs):
+        with transaction.atomic():
+            # Adjust the account balance before deletion
+            if self.transaction_type == self.INCOME:
+                self.account.balance -= self.amount
+            elif self.transaction_type == self.EXPENSE:
+                self.account.balance += self.amount
+
+            # Optionally, you can add validation to prevent balance from going negative
+            if self.account.balance < 0:
+                raise ValidationError("Deleting this transaction would result in a negative account balance.")
+
+            self.account.save()
+            super(Transaction, self).delete(*args, **kwargs)

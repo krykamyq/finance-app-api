@@ -122,4 +122,7 @@ class TransactionAPITest(APITestCase):
         response = self.client.delete(url)
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.account.refresh_from_db()
+        self.assertEqual(Transaction.objects.all().count(), 0)
+        self.assertEqual(self.account.balance, 0)
 
