@@ -11,3 +11,9 @@ class TransactionSerializer(serializers.ModelSerializer):
         model = Transaction
         fields = ['id', 'account', 'amount', 'date', 'description', 'transaction_type']
         read_only_fields = ['id']
+
+class IncomeSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Transaction
+        fields = ['id', 'amount', 'date', 'description']
+        read_only_fields = ['id']

@@ -5,6 +5,8 @@ from django.contrib.auth.models import (
     PermissionsMixin
 )
 from django.conf import settings
+from django.db import transaction
+from django.core.exceptions import ValidationError
 
 
 class UserManager(BaseUserManager):
@@ -67,6 +69,14 @@ class Account(models.Model):
     def __str__(self):
         return f"{self.user.username}'s account: {self.name}"
 
+    def save(self, *args, **kwargs):
+        super(Account, self).save(*args, **kwargs)  # Save the account instance first
+
+        # Recalculate and update the user's total balance
+        total_balance = sum(account.balance for account in Account.objects.filter(user=self.user))
+        self.user.balance = total_balance
+        self.user.save()
+
 
 class ActiveAccount(models.Model):
     """Active account model"""
@@ -103,3 +113,27 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.account.name} - {self.amount} - {self.transaction_type}"
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            if self.pk and not self._state.adding:
+                old_transaction = self.__class__.objects.get(pk=self.pk)
+                old_amount = old_transaction.amount
+            else:
+                old_amount = 0  # For a new transaction, the old amount is 0
+
+
+            if self.transaction_type == self.EXPENSE:
+                # Calculate the potential new balance
+                new_balance = self.account.balance + old_amount - self.amount
+
+                if new_balance < 0:
+                    raise ValidationError("Expense amount cannot exceed account balance.")
+                self.account.balance = new_balance
+
+            elif self.transaction_type == self.INCOME:
+                # Adjust the balance for the income, considering any previous amount if updating
+                self.account.balance = self.account.balance - old_amount + self.amount
+
+            self.account.save()
+            super(Transaction, self).save(*args, **kwargs)

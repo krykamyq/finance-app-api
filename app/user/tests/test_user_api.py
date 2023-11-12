@@ -139,7 +139,7 @@ class PrivateUserApiTests(APITestCase):
                            username='testuser', password='testpass123')
         self.client.force_authenticate(user=self.user)
         self.active_account = ActiveAccount.objects.get(user=self.user)
-        self.account1 = Account.objects.create(user=self.user, name='Savings', balance=100)
+        self.account1 = Account.objects.create(user=self.user, name='Savings', balance=0)
 
     def test_retrieve_profile_success(self):
         """Test retrieving profile for logged in user"""
