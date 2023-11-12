@@ -4,13 +4,15 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 from django.contrib.auth import get_user_model
 
-from core.models import ActiveAccount
+from core.models import ActiveAccount, Account
+from decimal import Decimal
 
 # Define any necessary URLs
 # For example:
 CREATE_USER_URL = reverse('user:create')
 TOKEN_URL = reverse('user:token')
-
+ACTIVE_ACCOUNT_URL = reverse('user:active-account')
+ME_URL = reverse('user:me')
 def create_user(**params):
     """Create and return new user."""
     return get_user_model().objects.create_user(**params)
@@ -127,6 +129,76 @@ class PublicUserApiTests(APITestCase):
         res = self.client.post(TOKEN_URL, payload)
         self.assertNotIn('token', res.data)
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+
+
+class PrivateUserApiTests(APITestCase):
+    """Test API requests that require authentication"""
+    def setUp(self):
+        self.user = create_user(email='anpch@example.com',
+                           username='testuser', password='testpass123')
+        self.client.force_authenticate(user=self.user)
+        self.active_account = ActiveAccount.objects.get(user=self.user)
+        self.account1 = Account.objects.create(user=self.user, name='Savings', balance=100)
+
+    def test_retrieve_profile_success(self):
+        """Test retrieving profile for logged in user"""
+        res = self.client.get(ME_URL)
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data, {
+            'email': self.user.email,
+            'username': self.user.username,
+            'balance': '0.00'
+        })
+
+    def test_post_me_not_allowed(self):
+        """Test that POST is not allowed on the users endpoint"""
+        res = self.client.post(ME_URL, {})
+
+        self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_update_user_profile(self):
+        """Test updating user profile for authenticated user"""
+        payload = {
+            'username': 'new_username',
+            'email': 'example@example.com',
+            'password': 'test12345'
+        }
+        res = self.client.patch(ME_URL, payload)
+
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, payload['username'])
+        self.assertEqual(self.user.email, payload['email'])
+        self.assertTrue(self.user.check_password(payload['password']))
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_change_active_account(self):
+        """Test changing active account for authenticated user"""
+        payload = {
+            'account_id': self.account1.id
+        }
+        res = self.client.patch(ACTIVE_ACCOUNT_URL, payload)
+
+        self.active_account.refresh_from_db()
+        self.assertEqual(self.active_account.account, self.account1)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+    def test_show_active_account(self):
+        """Test showing active account for authenticated user"""
+        res = self.client.get(ACTIVE_ACCOUNT_URL)
+        account = ActiveAccount.objects.get(user=self.user).account
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertEqual(res.data, {
+            'account': {
+                'id': account.id,
+                'name': account.name,
+                'balance': str(account.balance),  # Convert balance to string
+        }
+    })
+
+
+
 
 
 
