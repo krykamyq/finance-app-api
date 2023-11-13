@@ -14,6 +14,8 @@ TOKEN_URL = reverse('user:token')
 ACTIVE_ACCOUNT_URL = reverse('user:active-account')
 ME_URL = reverse('user:me')
 ACCOUNTS_URL = reverse('user:accounts')
+def detail_account_url(account_id):
+    return reverse('user:account-detail', args=[account_id])
 def create_user(**params):
     """Create and return new user."""
     return get_user_model().objects.create_user(**params)
@@ -223,6 +225,17 @@ class PrivateUserApiTests(APITestCase):
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         account = Account.objects.get(user=self.user, name=payload['name'])
         self.assertEqual(account.balance, payload['balance'])
+
+    def test_delete_account(self):
+        """Test deleting account for authenticated user"""
+        account2 = Account.objects.create(user=self.user, name='Checking', balance=100)
+
+        url = detail_account_url(account2.id)
+
+        res = self.client.delete(url)
+
+        self.assertEqual(res.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Account.objects.filter(user=self.user, name=account2.name).exists())
 
 
 

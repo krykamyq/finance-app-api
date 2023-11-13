@@ -68,7 +68,7 @@ class ActiveAccountView(
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
 
-class AccountListView(generics.ListAPIView, generics.CreateAPIView):
+class AccountListView(generics.ListAPIView, generics.CreateAPIView, generics.RetrieveDestroyAPIView):
     """List all accounts for a user."""
     serializer_class = AccountSerializer
     authentication_classes = [authentication.TokenAuthentication]
