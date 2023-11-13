@@ -68,7 +68,7 @@ class ActiveAccountView(
     def patch(self, request, *args, **kwargs):
         return super().patch(request, *args, **kwargs)
 
-class AccountListView(generics.ListAPIView):
+class AccountListView(generics.ListAPIView, generics.CreateAPIView):
     """List all accounts for a user."""
     serializer_class = AccountSerializer
     authentication_classes = [authentication.TokenAuthentication]
@@ -76,4 +76,7 @@ class AccountListView(generics.ListAPIView):
 
     def get_queryset(self):
         return Account.objects.filter(user=self.request.user).order_by('-id')
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)
 

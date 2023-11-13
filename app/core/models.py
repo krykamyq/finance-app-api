@@ -7,6 +7,7 @@ from django.contrib.auth.models import (
 from django.conf import settings
 from django.db import transaction
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -151,3 +152,30 @@ class Transaction(models.Model):
 
             self.account.save()
             super(Transaction, self).delete(*args, **kwargs)
+
+    @staticmethod
+    def create_transfer(from_account, to_account, amount, description):
+        if from_account.balance < amount:
+            raise ValueError("Insufficient funds in the source account.")
+
+        with transaction.atomic():
+            # Create Expense in source account
+            Transaction.objects.create(
+                account=from_account,
+                amount=amount,
+                transaction_type=Transaction.EXPENSE,
+                date=timezone.now(),
+                description=description
+            )
+            from_account.save()
+
+            # Create Income in destination account
+            Transaction.objects.create(
+                account=to_account,
+                amount=amount,
+                transaction_type=Transaction.INCOME,
+                date=timezone.now(),
+                description=description
+            )
+            to_account.save()
+

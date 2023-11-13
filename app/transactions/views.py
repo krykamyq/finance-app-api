@@ -4,7 +4,12 @@ from rest_framework import generics, viewsets
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
 from core.models import Transaction, ActiveAccount, Account
-from transactions.serializers import TransactionSerializer, IncomeSerializer, ExpenseSerializer
+from transactions.serializers import TransactionSerializer, IncomeSerializer, ExpenseSerializer, TransferSerializer
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from drf_spectacular.utils import extend_schema
 
 
 class TransactionList(generics.ListAPIView):
@@ -47,3 +52,21 @@ class ExpenseViewSet(baseViewSet):
     """Handle creating and updating Expense objects"""
     serializer_class = ExpenseSerializer
     transaction_type = 'expense'
+
+class TransferAPIView(APIView):
+    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAuthenticated,)
+    serializer_class = TransferSerializer
+
+    def post(self, request, format=None):
+        serializer = self.serializer_class(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            data = serializer.validated_data
+            Transaction.create_transfer(
+                data['from_account'],
+                data['to_account'],
+                data['amount'],
+                data['description']
+            )
+            return Response({'status': 'transfer successful'}, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

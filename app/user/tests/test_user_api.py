@@ -212,6 +212,17 @@ class PrivateUserApiTests(APITestCase):
         self.assertIn(self.account1.id, accoutn_ids)
         self.assertIn(account2.id, accoutn_ids)
 
+    def test_create_account(self):
+        """Test creating account for authenticated user"""
+        payload = {
+            'name': 'Checking',
+            'balance': 100
+        }
+        res = self.client.post(ACCOUNTS_URL, payload)
+
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        account = Account.objects.get(user=self.user, name=payload['name'])
+        self.assertEqual(account.balance, payload['balance'])
 
 
 

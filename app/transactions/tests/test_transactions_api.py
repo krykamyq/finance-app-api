@@ -4,13 +4,14 @@ from rest_framework.test import APITestCase
 from rest_framework import status
 from django.urls import reverse
 from django.contrib.auth.models import User
-from core.models import Transaction, ActiveAccount
+from core.models import Transaction, ActiveAccount, Account
 from user.serializers import AccountSerializer
 from django.contrib.auth import get_user_model
 
 TRANSACTION_URL = reverse('transactions:transaction-list')
 INCOMES_URL = reverse('transactions:income-list')
 EXPENSES_URL = reverse('transactions:expense-list')
+TRANSFER_URL = reverse('transactions:transfer')
 
 def detail_url(id):
     return reverse('transactions:income-detail', args=[id])
@@ -234,3 +235,25 @@ class TransactionAPITest(APITestCase):
         self.account.refresh_from_db()
         self.assertEqual(Transaction.objects.all().count(), 1)
         self.assertEqual(self.account.balance, 300)
+
+    def test_transfer_success(self):
+        """Test successful transfer between accounts"""
+        from_account = Account.objects.create(user=self.user, name='Savings', balance=1000)
+        to_account = Account.objects.create(user=self.user, name='Current', balance=1000)
+        payload = {
+            'from_account_id': from_account.id,
+            'to_account_id': to_account.id,
+            'amount': '200.00',
+            'description': 'Test Transfer'
+        }
+        response = self.client.post(TRANSFER_URL, payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'transfer successful')
+
+        from_account.refresh_from_db()
+        to_account.refresh_from_db()
+
+        self.assertEqual(from_account.balance, 800)
+        self.assertEqual(to_account.balance, 1200)
+

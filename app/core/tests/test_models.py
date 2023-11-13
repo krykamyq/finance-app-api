@@ -5,6 +5,7 @@ from django.test import TestCase
 from django.contrib.auth import get_user_model
 
 from core.models import Account, ActiveAccount, Transaction
+from decimal import Decimal
 
 
 
@@ -102,5 +103,35 @@ class MotelTest(TestCase):
         self.assertEqual(transaction.amount, 100)
         self.assertEqual(transaction.description, 'Test Transaction')
         self.assertEqual(transaction.transaction_type, Transaction.INCOME)
+
+    def test_successful_transfer(self):
+        """Test a successful transfer between accounts"""
+        user = create_user()
+        self.account1 = Account.objects.create(user=user, balance=1000)
+        self.account2 = Account.objects.create(user=user, balance=500)
+        Transaction.create_transfer(self.account1, self.account2, 400, 'Test Transfer')
+
+        self.account1.refresh_from_db()
+        self.account2.refresh_from_db()
+
+        self.assertEqual(self.account1.balance, Decimal('600'))
+        self.assertEqual(self.account2.balance, Decimal('900'))
+
+    def test_transfer_with_insufficient_funds(self):
+        """Test transfer with insufficient funds raises an error"""
+        user = create_user()
+        self.account1 = Account.objects.create(user=user, balance=1000)
+        self.account2 = Account.objects.create(user=user, balance=500)
+
+        with self.assertRaises(ValueError):
+            Transaction.create_transfer(self.account1, self.account2, 1500, 'Failed Transfer')
+
+        # Optionally, verify that balances remain unchanged
+        self.account1.refresh_from_db()
+        self.account2.refresh_from_db()
+        self.assertEqual(self.account1.balance, 1000)
+        self.assertEqual(self.account2.balance, 500)
+
+
 
 
