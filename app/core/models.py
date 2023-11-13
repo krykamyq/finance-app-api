@@ -56,6 +56,13 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.username
 
+class Category(models.Model):
+    """Category model"""
+    name = models.CharField(max_length=100)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+
+    def __str__(self):
+        return self.name
 
 
 class Account(models.Model):
@@ -111,6 +118,7 @@ class Transaction(models.Model):
     transaction_type = models.CharField(max_length=7, choices=TRANSACTION_TYPE_CHOICES)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    category = models.ForeignKey(Category, on_delete=models.SET_NULL, null=True)
 
     def __str__(self):
         return f"{self.account.name} - {self.amount} - {self.transaction_type}"
@@ -124,31 +132,56 @@ class Transaction(models.Model):
                 old_amount = 0  # For a new transaction, the old amount is 0
 
 
+            balance_adjustment = self.amount - old_amount
+
             if self.transaction_type == self.EXPENSE:
                 # Calculate the potential new balance
-                new_balance = self.account.balance + old_amount - self.amount
+                new_balance = self.account.balance - balance_adjustment
 
                 if new_balance < 0:
                     raise ValidationError("Expense amount cannot exceed account balance.")
                 self.account.balance = new_balance
 
+                # Update corresponding budget's spent amount
+                self._update_budget_spent(balance_adjustment)
+
             elif self.transaction_type == self.INCOME:
                 # Adjust the balance for the income, considering any previous amount if updating
-                self.account.balance = self.account.balance - old_amount + self.amount
+                self.account.balance += balance_adjustment
+                self._update_budget_spent(balance_adjustment)
 
             self.account.save()
+
             super(Transaction, self).save(*args, **kwargs)
+
+    def _update_budget_spent(self, amount):
+        """
+        Update the spent amount in the budget corresponding to this transaction's category.
+        Only update if the transaction type is EXPENSE.
+        """
+        if self.category and self.transaction_type == self.EXPENSE:
+            budget, created = Budget.objects.get_or_create(
+                user=self.account.user,
+                category=self.category,
+                defaults={'amount': 0, 'spent': 0}
+            )
+            budget.spent += amount
+            budget.save()
+
+
     def delete(self, *args, **kwargs):
         with transaction.atomic():
             # Adjust the account balance before deletion
-            if self.transaction_type == self.INCOME:
-                self.account.balance -= self.amount
-            elif self.transaction_type == self.EXPENSE:
-                self.account.balance += self.amount
+            balance_adjustment = -self.amount if self.transaction_type == self.INCOME else self.amount
+            self.account.balance += balance_adjustment
 
-            # Optionally, you can add validation to prevent balance from going negative
+            # Optionally, validate negative balance
             if self.account.balance < 0:
                 raise ValidationError("Deleting this transaction would result in a negative account balance.")
+
+            # Update the corresponding budget's spent amount if it's an expense
+            if self.transaction_type == self.EXPENSE and self.category:
+                self._update_budget_spent(-self.amount)
 
             self.account.save()
             super(Transaction, self).delete(*args, **kwargs)
@@ -179,3 +212,17 @@ class Transaction(models.Model):
             )
             to_account.save()
 
+class Budget(models.Model):
+    """Budget model"""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+                                on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    category = models.ForeignKey(Category, on_delete=models.CASCADE)
+    spent = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+
+
+    def __str__(self):
+        return f"{self.user.username}'s budget on{self.category.name}: {self.amount}"

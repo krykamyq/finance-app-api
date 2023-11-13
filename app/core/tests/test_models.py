@@ -4,7 +4,7 @@ Tests for models.
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
-from core.models import Account, ActiveAccount, Transaction
+from core.models import Account, ActiveAccount, Transaction, Category, Budget
 from decimal import Decimal
 
 
@@ -16,7 +16,7 @@ def create_user(email="test@example.com",
     return get_user_model().objects.create_user(email, username, password)
 
 
-class MotelTest(TestCase):
+class ModelTest(TestCase):
     """Test models."""
     def test_create_user_with_email_successful(self):
         """Test createing user with email is successful"""
@@ -131,6 +131,108 @@ class MotelTest(TestCase):
         self.account2.refresh_from_db()
         self.assertEqual(self.account1.balance, 1000)
         self.assertEqual(self.account2.balance, 500)
+
+    def test_category_creation(self):
+        """Test the category creation"""
+        user = create_user()
+        category = Category.objects.create(user=user, name='Groceries')
+        self.assertEqual(category.name, 'Groceries')
+        self.assertEqual(category.user, user)
+
+    def test_budget_creation(self):
+        """Test the budget creation"""
+        user = create_user()
+        category = Category.objects.create(user=user, name='Groceries')
+        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        self.assertEqual(budget.user, user)
+        self.assertEqual(budget.category, category)
+        self.assertEqual(budget.amount, 1000)
+
+    def test_transaction_creation_updates_budget(self):
+        """Test creating an expense transaction updates the budget spent amount"""
+        user = create_user()
+        category = Category.objects.create(user=user, name='Groceries')
+        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            date='2021-01-01',
+            amount=100,
+            transaction_type=Transaction.INCOME)
+
+
+        Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            category=category,
+            date='2021-01-01',
+            amount=100,
+            transaction_type=Transaction.EXPENSE
+        )
+
+        budget.refresh_from_db()
+        self.assertEqual(budget.spent, Decimal('100.00'))
+
+    def test_transaction_creation_income_does_not_affect_budget(self):
+        """Test creating an income transaction does not affect the budget"""
+        user = create_user()
+        category = Category.objects.create(user=user, name='Groceries')
+        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        initial_spent = budget.spent
+        Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            category=category,
+            amount=100,
+            date='2021-01-01',
+            transaction_type=Transaction.INCOME
+        )
+
+        budget.refresh_from_db()
+        self.assertEqual(budget.spent, initial_spent)
+
+    def test_updating_transaction_adjusts_budget(self):
+        """Test updating a transaction adjusts the budget correctly"""
+        user = create_user()
+        category = Category.objects.create(user=user, name='Groceries')
+        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            date='2021-01-01',
+            amount=200,
+            transaction_type=Transaction.INCOME)
+        transaction = Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            category=category,
+            date='2021-01-01',
+            amount=100,
+            transaction_type=Transaction.EXPENSE
+        )
+        transaction.amount = 150
+        transaction.save()
+
+        budget.refresh_from_db()
+        self.assertEqual(budget.spent, 150)
+
+    def test_deleting_transaction_reverts_budget(self):
+        """Test deleting a transaction reverts the budget spent amount"""
+        user = create_user()
+        category = Category.objects.create(user=user, name='Groceries')
+        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            date='2021-01-01',
+            amount=200,
+            transaction_type=Transaction.INCOME)
+        transaction = Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=user).account,
+            category=category,
+            date='2021-01-01',
+            amount=100,
+            transaction_type=Transaction.EXPENSE
+        )
+        transaction.delete()
+
+        budget.refresh_from_db()
+        self.assertEqual(budget.spent, 0)
+
 
 
 
