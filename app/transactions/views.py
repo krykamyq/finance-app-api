@@ -3,8 +3,8 @@
 from rest_framework import generics, viewsets
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated
-from core.models import Transaction, ActiveAccount, Account
-from transactions.serializers import TransactionSerializer, IncomeSerializer, ExpenseSerializer, TransferSerializer
+from core.models import Transaction, ActiveAccount, Account, Budget
+from transactions.serializers import TransactionSerializer, IncomeSerializer, ExpenseSerializer, TransferSerializer, BudgetSerializer
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -39,7 +39,8 @@ class baseViewSet(viewsets.ModelViewSet):
         """Create and save a new Income"""
         serializer.save(account=ActiveAccount.objects.get(
             user=self.request.user).account,
-                        transaction_type=self.transaction_type)
+                        transaction_type=self.transaction_type,
+                        )
 
 
 class IncomeViewSet(baseViewSet):
@@ -70,3 +71,16 @@ class TransferAPIView(APIView):
             )
             return Response({'status': 'transfer successful'}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class BudgetViewSet(viewsets.ModelViewSet):
+    """Handle creating and updating Budget objects"""
+    serializer_class = BudgetSerializer
+    authentication_classes = (TokenAuthentication,)
+    permission_classes = (IsAuthenticated,)
+
+
+    def get_queryset(self):
+        return Budget.objects.filter(user=self.request.user)
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user)

@@ -3,13 +3,20 @@ from core.models import Transaction
 
 """Serializers for transactions"""
 from user.serializers import AccountSerializer
-from core.models import Transaction, Account
+from core.models import Transaction, Account, Category, Budget
+
+class CategorySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Category
+        fields = ['id', 'name']
+        read_only_fields = ['id']
 
 class TransactionSerializer(serializers.ModelSerializer):
     account = AccountSerializer(many=False)
+    category = CategorySerializer(many=False, required=False)
     class Meta:
         model = Transaction
-        fields = ['id', 'account', 'amount', 'date', 'description', 'transaction_type']
+        fields = ['id', 'account', 'amount', 'date', 'description', 'transaction_type', 'category']
         read_only_fields = ['id']
 
 class IncomeSerializer(serializers.ModelSerializer):
@@ -20,10 +27,26 @@ class IncomeSerializer(serializers.ModelSerializer):
 
 
 class ExpenseSerializer(serializers.ModelSerializer):
+    category = CategorySerializer(many=False, required=False)
     class Meta:
         model = Transaction
-        fields = ['id', 'amount', 'date', 'description']
+        fields = ['id', 'amount', 'date', 'description', 'category']
         read_only_fields = ['id']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        # Extract category data from validated_data
+        category_data = validated_data.pop('category', None)
+
+        # Create or retrieve the category instance
+        if category_data:
+            category, _ = Category.objects.get_or_create(user=user, **category_data)
+            validated_data['category'] = category
+
+        # Create the Expense instance
+        expense = Transaction.objects.create(**validated_data)
+
+        return expense
 
 class TransferSerializer(serializers.Serializer):
     from_account_id = serializers.IntegerField(write_only=True)
@@ -46,3 +69,25 @@ class TransferSerializer(serializers.Serializer):
             raise serializers.ValidationError("Insufficient funds in the source account.")
 
         return data
+
+class BudgetSerializer(serializers.ModelSerializer):
+    category = CategorySerializer(many=False, required=False)
+    class Meta:
+        model = Budget
+        fields = ['id', 'category', 'amount', 'spent']
+        read_only_fields = ['id']
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        # Extract category data from validated_data
+        category_data = validated_data.pop('category', None)
+
+        # Create or retrieve the category instance
+        if category_data:
+            category, _ = Category.objects.get_or_create(user=user, **category_data)
+            validated_data['category'] = category
+
+        # Create the Expense instance
+        budget = Budget.objects.create(**validated_data)
+
+        return budget
