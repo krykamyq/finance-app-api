@@ -7,8 +7,12 @@ from django.contrib.auth.models import (
 from django.conf import settings
 from django.db import transaction
 from django.core.exceptions import ValidationError
+import logging
 from django.utils import timezone
 
+from django.contrib.auth import get_user_model
+
+logger = logging.getLogger(__name__)
 
 class UserManager(BaseUserManager):
     """Manager for users."""
@@ -86,6 +90,122 @@ class Account(models.Model):
         self.user.save()
 
 
+class InvestmentAccount(Account):
+    """Investment account model"""
+    amount_to_invest = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_investment = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+
+
+    def actual_balance(self):
+        return self.amount_to_invest + self.total_investment
+
+
+    def save(self, *args, **kwargs):
+        # If there are multiple operations that need to be atomic, use transaction.atomic()
+        with transaction.atomic():
+            self.balance = self.actual_balance()
+            super(InvestmentAccount, self).save(*args, **kwargs)  # Save changes to the database
+
+
+class Asset(models.Model):
+    """Asset model"""
+    name = models.CharField(max_length=255)
+    value = models.DecimalField(max_digits=10, decimal_places=4)
+    updated_at = models.DateTimeField(auto_now=True)
+    type_asset = models.CharField(max_length=255, default="Stock")
+
+    def __str__(self):
+        return self.name
+
+
+class InvestmentAsset(models.Model):
+    """Investment asset model"""
+    investment_account = models.ForeignKey(InvestmentAccount, on_delete=models.CASCADE)
+    asset = models.ForeignKey(Asset, on_delete=models.SET_NULL, null=True)
+    quantity_have = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def total_value(self):
+        return self.quantity_have * self.asset.value
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            if self.investment_account_id and not self.investment_account.pk:
+                self.investment_account.save()
+            if self.asset_id and not self.asset.pk:
+                self.asset.save()
+            super(InvestmentAsset, self).save(*args, **kwargs)  # Save changes to the database
+
+
+
+
+class InvestmentTransaction(models.Model):
+    """Investment transaction model"""
+    investment_account = models.ForeignKey(InvestmentAccount, on_delete=models.CASCADE)
+    asset = models.ForeignKey(InvestmentAsset, on_delete=models.SET_NULL, null=True)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2)
+    date = models.DateField()
+    initial_value = models.DecimalField(max_digits=10, decimal_places=4)
+    description = models.CharField(max_length=255, blank=True)
+    class type_transactions(models.TextChoices):
+        BUY = 'buy', 'Buy'
+        SELL ='sell', 'Sell'
+    type_transaction = models.CharField(max_length=255, choices=type_transactions.choices, default=type_transactions.BUY)
+
+    def total_value(self):
+        return self.quantity * self.asset.asset.value
+
+    def save(self, *args, **kwargs):
+        with transaction.atomic():
+            try:
+                asset = self.asset
+
+                # Validation for selling
+                if self.type_transaction == self.type_transactions.SELL:
+                    if self.quantity > asset.quantity_have:
+                        raise ValidationError("Cannot sell more assets than are held in the account.")
+
+                # Update quantities based on transaction type
+                if self.type_transaction == self.type_transactions.BUY:
+                    asset.quantity_have += self.quantity
+                elif self.type_transaction == self.type_transactions.SELL:
+                    asset.quantity_have -= self.quantity
+
+
+                # Save the updated asset
+                asset.save()
+
+                # Recalculate and update the user's total balance
+                total_balance = self.investment_account.total_investment + self.total_value()
+                self.investment_account.total_investment = total_balance
+                self.investment_account.save()
+
+                super(InvestmentTransaction, self).save(*args, **kwargs)
+
+            except ValidationError as e:
+                logger.error(f"Validation error in processing transaction: {e}")
+                raise  # Re-raise the exception to be handled by the caller
+
+            except Exception as e:
+                logger.error(f"Unexpected error in processing transaction: {e}")
+                raise  # Re-raise the exception to ensure it's handled up the stack
+
+
+
+
+class ActiveInvestmentAccount(models.Model):
+    """Active investment account model"""
+    user = models.OneToOneField(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='active_investment_account'
+    )
+    investment_account = models.OneToOneField(
+        InvestmentAccount,
+        on_delete=models.CASCADE,
+        related_name='active_investment_for_user'
+    )
+
+
 class ActiveAccount(models.Model):
     """Active account model"""
     user = models.OneToOneField(
@@ -101,6 +221,9 @@ class ActiveAccount(models.Model):
 
     def __str__(self):
         return f"{self.user.username}'s active account: {self.account.name}"
+
+
+
 
 class Transaction(models.Model):
     """Transaction model"""
@@ -163,7 +286,7 @@ class Transaction(models.Model):
             budget, created = Budget.objects.get_or_create(
                 user=self.account.user,
                 category=self.category,
-                defaults={'amount': 0, 'spent': 0}
+                defaults={'amount': 1000, 'spent': 0}
             )
             budget.spent += amount
             budget.save()
