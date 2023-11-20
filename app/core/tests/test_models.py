@@ -4,8 +4,9 @@ Tests for models.
 from django.test import TestCase
 from django.contrib.auth import get_user_model
 
-from core.models import Account, ActiveAccount, Transaction, Category, Budget
+from core.models import Account, ActiveAccount, Transaction, Category, Budget, InvestmentAccount, ActiveInvestmentAccount
 from decimal import Decimal
+from django.core.exceptions import ValidationError
 
 
 
@@ -16,7 +17,7 @@ def create_user(email="test@example.com",
     return get_user_model().objects.create_user(email, username, password)
 
 
-class ModelTest(TestCase):
+class ModelUserTest(TestCase):
     """Test models."""
     def test_create_user_with_email_successful(self):
         """Test createing user with email is successful"""
@@ -24,14 +25,14 @@ class ModelTest(TestCase):
         email = 'test@example.com'
         username = 'test123'
         password = 'password123'
-        user = get_user_model().objects.create_user(
+        users = get_user_model().objects.create_user(
             email=email,
             username=username,
             password=password
         )
 
-        self.assertEqual(user.email, email)
-        self.assertTrue(user.check_password(password))
+        self.assertEqual(users.email, email)
+        self.assertTrue(users.check_password(password))
 
     def test_new_user_email_normalized(self):
         sample_emails = [
@@ -57,119 +58,217 @@ class ModelTest(TestCase):
             'test123',
             'test123'
         )
-
         self.assertTrue(user.is_superuser)
         self.assertTrue(user.is_staff)
 
+
+class ModelTest(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username='test_user',
+            password='test_password',
+            email='test_email@test.com')
+        self.account = ActiveAccount.objects.get(
+            user=self.user).account
+
+
     def test_create_account_for_user(self):
-        """Test creating an account for a user"""
-        user = get_user_model().objects.create_user(
-            'test@user.com',
-            'testuser',
-            'test123'
-        )
-        account = Account.objects.create(user=user, name='Savings')
+        self.assertEquals(self.account.user, self.user)
+        self.assertEquals(self.account.balance, 0)
+        self.assertEquals(self.user.balance, 0)
 
-        self.assertEqual(account.user, user)
-        self.assertEqual(account.name, 'Savings')
-        self.assertEqual(account.balance, 0)
 
-    def test_create_active_account_for_user(self):
-        """Test creating an active account for a user"""
-        user = get_user_model().objects.create_user(
-            'test@user.com',
-            'testuser',
-            'test123'
-        )
-        active = ActiveAccount.objects.get(user=user)
-        account = Account.objects.get(pk=active.account.id)
-
-        self.assertEqual(active.user, user)
-        self.assertEqual(active.account, account)
-
-    def test_create_transaction(self):
+    def test_create_income_transaction(self):
         """Test creating a transaction is successful"""
-        user = create_user()
-        active = ActiveAccount.objects.get(user=user).account
         transaction = Transaction.objects.create(
-            account=active,
+            account=self.account,
             amount=100,
             date='2021-01-01',
             description='Test Transaction',
             transaction_type=Transaction.INCOME
         )
 
-        self.assertEqual(transaction.account, active)
+        self.assertEqual(transaction.account, self.account)
         self.assertEqual(transaction.amount, 100)
         self.assertEqual(transaction.description, 'Test Transaction')
         self.assertEqual(transaction.transaction_type, Transaction.INCOME)
+        self.assertEqual(transaction.date, '2021-01-01')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 100)
+
+    def test_create_expense_transaction(self):
+        """Test creating a transaction is successful"""
+        Transaction.objects.create(
+            account=self.account,
+            amount=100,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.INCOME
+        )
+        transaction = Transaction.objects.create(
+            account=self.account,
+            amount=50,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.EXPENSE
+        )
+
+        self.assertEqual(transaction.account, self.account)
+        self.assertEqual(transaction.amount, 50)
+        self.assertEqual(transaction.description, 'Test Transaction')
+        self.assertEqual(transaction.transaction_type, Transaction.EXPENSE)
+        self.assertEqual(transaction.date, '2021-01-01')
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 50)
+
+    def test_create_expense_with_not_enough_funds_raises_error(self):
+        with self.assertRaises(ValidationError):
+            transaction = Transaction.objects.create(
+                account=self.account,
+                amount=50,
+                date='2021-01-01',
+                description='Test Transaction',
+                transaction_type=Transaction.EXPENSE
+        )
+    def test_delete_income_transaction(self):
+        transaction = Transaction.objects.create(
+            account=self.account,
+            amount=100,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.INCOME
+        )
+        transaction.delete()
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 0)
+        self.assertEqual(self.account.balance, 0)
+
+    def test_delete_expense_transaction(self):
+        Transaction.objects.create(
+            account=self.account,
+            amount=100,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.INCOME
+        )
+        transaction = Transaction.objects.create(
+            account=self.account,
+            amount=50,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.EXPENSE
+        )
+        transaction.delete()
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 100)
+        self.assertEqual(self.account.balance, 100)
+
+    def test_delete_account(self):
+        acc = Account.objects.create(user= self.user, name='test')
+        Transaction.objects.create(
+            account=acc,
+            amount=100,
+            date='2021-01-01',
+            description='Test Transaction',
+            transaction_type=Transaction.INCOME
+        )
+        acc.delete()
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, 0)
+
+    def test_delete_active_account(self):
+        with self.assertRaises(ValidationError):
+            self.account.delete()
 
     def test_successful_transfer(self):
         """Test a successful transfer between accounts"""
-        user = create_user()
-        self.account1 = Account.objects.create(user=user, balance=1000)
-        self.account2 = Account.objects.create(user=user, balance=500)
-        Transaction.create_transfer(self.account1, self.account2, 400, 'Test Transfer')
+        self.account2 = Account.objects.create(user=self.user, balance=500)
+        Transaction.create_transfer(self.account2, self.account, 400, 'Test Transfer')
 
-        self.account1.refresh_from_db()
+        self.account.refresh_from_db()
         self.account2.refresh_from_db()
 
-        self.assertEqual(self.account1.balance, Decimal('600'))
-        self.assertEqual(self.account2.balance, Decimal('900'))
+        self.assertEqual(self.account.balance, Decimal('400'))
+        self.assertEqual(self.account2.balance, Decimal('100'))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, Decimal('500'))
 
     def test_transfer_with_insufficient_funds(self):
         """Test transfer with insufficient funds raises an error"""
-        user = create_user()
-        self.account1 = Account.objects.create(user=user, balance=1000)
-        self.account2 = Account.objects.create(user=user, balance=500)
+        self.account2 = Account.objects.create(user=self.user, balance=500)
 
-        with self.assertRaises(ValueError):
-            Transaction.create_transfer(self.account1, self.account2, 1500, 'Failed Transfer')
+        with self.assertRaises(ValidationError):
+            Transaction.create_transfer(self.account, self.account2, 1500, 'Failed Transfer')
 
         # Optionally, verify that balances remain unchanged
-        self.account1.refresh_from_db()
+        self.account.refresh_from_db()
         self.account2.refresh_from_db()
-        self.assertEqual(self.account1.balance, 1000)
+        self.assertEqual(self.account.balance, 0)
         self.assertEqual(self.account2.balance, 500)
 
     def test_category_creation(self):
         """Test the category creation"""
-        user = create_user()
-        category = Category.objects.create(user=user, name='Groceries')
+        category = Category.objects.create(user=self.user, name='Groceries')
         self.assertEqual(category.name, 'Groceries')
-        self.assertEqual(category.user, user)
+        self.assertEqual(category.user, self.user)
+
+    def test_delete_category(self):
+        """Test the category deletion"""
+        category = Category.objects.create(user=self.user, name='Groceries')
+        category.delete()
+        self.assertEqual(Category.objects.all().count(), 0)
 
     def test_budget_creation(self):
         """Test the budget creation"""
-        user = create_user()
-        category = Category.objects.create(user=user, name='Groceries')
-        budget = Budget.objects.create(user=user, amount=1000, category=category)
-        self.assertEqual(budget.user, user)
+        category = Category.objects.create(user=self.user, name='Groceries')
+        budget = Budget.objects.create(user=self.user, amount=1000, category=category)
+        self.assertEqual(budget.user, self.user)
         self.assertEqual(budget.category, category)
         self.assertEqual(budget.amount, 1000)
 
     def test_transaction_creation_updates_budget(self):
         """Test creating an expense transaction updates the budget spent amount"""
-        user = create_user()
-        category = Category.objects.create(user=user, name='Groceries')
-        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        category = Category.objects.create(user=self.user, name='Groceries')
+        budget = Budget.objects.create(user=self.user, amount=1000, category=category)
         Transaction.objects.create(
-            account=ActiveAccount.objects.get(user=user).account,
+            account=ActiveAccount.objects.get(user=self.user).account,
             date='2021-01-01',
             amount=100,
             transaction_type=Transaction.INCOME)
 
-
         Transaction.objects.create(
-            account=ActiveAccount.objects.get(user=user).account,
-            category=category,
+            account=ActiveAccount.objects.get(user=self.user).account,
+            category=budget.category,
             date='2021-01-01',
             amount=100,
-            transaction_type=Transaction.EXPENSE
+            transaction_type=Transaction.EXPENSE,
         )
 
         budget.refresh_from_db()
         self.assertEqual(budget.spent, Decimal('100.00'))
+
+    def test_transaction_creation_expense_is_to_hight_for_budget(self):
+        category = Category.objects.create(user=self.user, name='Groceries')
+        budget = Budget.objects.create(user=self.user, amount=10, category=category)
+        Transaction.objects.create(
+            account=ActiveAccount.objects.get(user=self.user).account,
+            date='2021-01-01',
+            amount=100,
+            transaction_type=Transaction.INCOME)
+        with self.assertRaises(ValidationError):
+            Transaction.objects.create(
+                account=ActiveAccount.objects.get(user=self.user).account,
+                category=budget.category,
+                date='2021-01-01',
+                amount=100,
+                transaction_type=Transaction.EXPENSE,
+            )
+
+        budget.refresh_from_db()
+        self.assertEqual(budget.spent, Decimal('0'))
+
+
+
 
     def test_transaction_creation_income_does_not_affect_budget(self):
         """Test creating an income transaction does not affect the budget"""
@@ -188,18 +287,17 @@ class ModelTest(TestCase):
         budget.refresh_from_db()
         self.assertEqual(budget.spent, initial_spent)
 
-    def test_updating_transaction_adjusts_budget(self):
+    def test_updating_transaction(self):
         """Test updating a transaction adjusts the budget correctly"""
-        user = create_user()
-        category = Category.objects.create(user=user, name='Groceries')
-        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        category = Category.objects.create(user=self.user, name='Groceries')
+        budget = Budget.objects.create(user=self.user, amount=1000, category=category)
         Transaction.objects.create(
-            account=ActiveAccount.objects.get(user=user).account,
+            account=self.account,
             date='2021-01-01',
             amount=200,
             transaction_type=Transaction.INCOME)
         transaction = Transaction.objects.create(
-            account=ActiveAccount.objects.get(user=user).account,
+            account=self.account,
             category=category,
             date='2021-01-01',
             amount=100,
@@ -210,19 +308,23 @@ class ModelTest(TestCase):
 
         budget.refresh_from_db()
         self.assertEqual(budget.spent, 150)
+        self.assertEqual(transaction.amount, 150)
+        self.user.refresh_from_db()
+        self.account.refresh_from_db()
+        self.assertEqual(self.account.balance,  Decimal('50'))
+        self.assertEqual(self.user.balance, Decimal('50'))
 
     def test_deleting_transaction_reverts_budget(self):
         """Test deleting a transaction reverts the budget spent amount"""
-        user = create_user()
-        category = Category.objects.create(user=user, name='Groceries')
-        budget = Budget.objects.create(user=user, amount=1000, category=category)
+        category = Category.objects.create(user=self.user, name='Groceries')
+        budget = Budget.objects.create(user=self.user, amount=1000, category=category)
         Transaction.objects.create(
-            account=ActiveAccount.objects.get(user=user).account,
+            account=self.account,
             date='2021-01-01',
             amount=200,
             transaction_type=Transaction.INCOME)
         transaction = Transaction.objects.create(
-            account=ActiveAccount.objects.get(user=user).account,
+            account=self.account,
             category=category,
             date='2021-01-01',
             amount=100,
@@ -232,6 +334,25 @@ class ModelTest(TestCase):
 
         budget.refresh_from_db()
         self.assertEqual(budget.spent, 0)
+
+    def test_transfer_to_investment_account(self):
+        """Test a successful transfer between accounts"""
+        Transaction.objects.create(
+            account=self.account,
+            date='2021-01-01',
+            amount=200,
+            transaction_type=Transaction.INCOME)
+        account2 = ActiveInvestmentAccount.objects.get(user=self.user).investment_account
+        Transaction.transfer_to_investment_account(self.account, account2, 100)
+
+        self.account.refresh_from_db()
+        account2.refresh_from_db()
+
+        self.assertEqual(self.account.balance, Decimal('100'))
+        self.assertEqual(account2.balance, Decimal('100'))
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.balance, Decimal('200'))
+
 
 
 

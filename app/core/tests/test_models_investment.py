@@ -1,101 +1,444 @@
 from django.test import TestCase
 from django.contrib.auth import get_user_model
-from core.models import InvestmentAccount, Asset, InvestmentAsset, InvestmentTransaction, ActiveInvestmentAccount
+from core.models import InvestmentAccount, Asset, InvestmentAsset, InvestmentTransaction, ActiveInvestmentAccount, ActiveAccount
 from decimal import Decimal
 from datetime import date
+from django.core.exceptions import ValidationError
 
 
-class InvestmentAccountModelTest(TestCase):
 
-    def test_create_investment_account(self):
-        user = get_user_model().objects.create_user(username='testuser', email='test@example.com', password='testpass123')
-        account = InvestmentAccount.objects.create(
-            user=user,
-            name='testaccount',
-            amount_to_invest=Decimal('100.00'),
-            total_investment=Decimal('150.00')
+
+
+class ModelTests(TestCase):
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(
+            username='test_user',
+            password='test_password',
+            email='test_email@test.com')
+        self.investment_account = ActiveInvestmentAccount.objects.get(user=self.user)
+        self.account = self.investment_account.investment_account
+        self.asset = Asset.objects.create(
+            name='test',
+            value=80
+        )
+        self.investment_asset = InvestmentAsset.objects.create(
+            asset=self.asset,
+            investment_account=self.account
         )
 
-        self.assertEqual(account.user, user)
-        self.assertEqual(account.amount_to_invest, Decimal('100.00'))
-        self.assertEqual(account.total_investment, Decimal('150.00'))
-        self.assertEqual(account.actual_balance(), Decimal('250.00'))
 
-class AssetModelTest(TestCase):
+    def test_accoutn_creation(self):
+        self.assertEquals(self.account.user, self.user)
+        self.assertEquals(self.account.amount_to_invest, 0)
+        self.assertEquals(self.account.total_investment, 0)
+        self.assertEquals(self.account.balance, 0)
+        self.assertEquals(self.user.balance, 0)
 
     def test_create_asset(self):
-        asset = Asset.objects.create(
-            name='Test Asset',
-            value=Decimal('200.00'),
-            type_asset='Stock'
-        )
+        self.assertEquals(self.asset.name, 'test')
+        self.assertEquals(self.asset.value, 80)
 
-        self.assertEqual(asset.name, 'Test Asset')
-        self.assertEqual(asset.value, Decimal('200.00'))
-        self.assertEqual(asset.type_asset, 'Stock')
+    def test_create_investment_asset(self):
+        self.assertEquals(self.investment_asset.asset, self.asset)
+        self.assertEquals(self.investment_asset.investment_account, self.account)
+        self.assertEquals(self.investment_asset.quantity_have, 0)
+        self.assertEquals(self.investment_asset.total_value, 0)
+
+    def test_create_buy_investment_transaction_with_not_enought_ammount_to_invest(self):
+        with self.assertRaises(ValidationError):
+            InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        self.assertEquals(self.investment_asset.quantity_have, 0)
+        self.assertEquals(self.investment_asset.total_value, 0)
+        self.assertEquals(self.user.balance, 0)
+
+    def test_create_buy_investment_transaction_with_enought_ammount_to_invest(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        self.assertEquals(self.investment_asset.quantity_have, 10)
+        self.assertEquals(self.investment_asset.total_value, 800)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 800)
+
+    def test_create_sell_investment_transaction_with_not_enought_quantity_have(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        with self.assertRaises(ValidationError):
+            InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=11,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        self.assertEquals(self.investment_asset.quantity_have, 10)
+        self.assertEquals(self.investment_asset.total_value, 800)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 800)
+
+    def test_create_sell_investment_transaction_with_enought_quantity_have(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=8,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        self.assertEquals(self.investment_asset.quantity_have, 2)
+        self.assertEquals(self.investment_asset.total_value, 160)
+        self.assertEquals(self.account.amount_to_invest, 800)
+        self.assertEquals(self.account.total_investment, 160)
+        self.assertEquals(self.account.balance, 960)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 960)
+
+    def test_update_buy_investment_transaction_with_not_enought_ammount_to_invest(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        transaction =InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        transaction.quantity = 11  # Zwiększenie ilości o 1
+        with self.assertRaises(ValidationError):
+            transaction.save()
+
+        self.investment_asset.refresh_from_db()
+        self.user.refresh_from_db()
+        self.assertEquals(self.investment_asset.quantity_have, 10)
+        self.assertEquals(self.investment_asset.total_value, 800)
+        self.assertEquals(self.user.balance, 800)
+
+    def test_update_buy_investment_transaction_with_enought_ammount_to_invest(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        transaction =InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        transaction.quantity = 8  # Zmniejszenie ilosci o 2
+        transaction.save()
+
+        self.investment_asset.refresh_from_db()
+        self.user.refresh_from_db()
+
+        self.assertEquals(self.investment_asset.quantity_have, 8)
+        self.assertEquals(self.investment_asset.total_value, 640)
+        self.assertEquals(self.user.balance, 840)
+
+        transaction.quantity = 9 # Zwiekszenie ilosci o 1
+        transaction.save()
+
+        self.investment_asset.refresh_from_db()
+        self.user.refresh_from_db()
+
+        self.assertEquals(self.investment_asset.quantity_have, 9)
+        self.assertEquals(self.investment_asset.total_value, 720)
+        self.assertEquals(self.user.balance, 820)
 
 
-class InvestmentAssetModelTest(TestCase):
-
-    def test_investment_asset_total_value(self):
-        user = get_user_model().objects.create_user(username='testuser', email='test@example.com', password='testpass123')
-        investment_account = InvestmentAccount.objects.create(user=user, name='testaccount')
-        asset = Asset.objects.create(name='Test Asset', value=Decimal('50.00'))
-        investment_asset = InvestmentAsset.objects.create(
-            investment_account=investment_account,
-            asset=asset,
-            quantity_have=Decimal('2')
-        )
-
-        self.assertEqual(investment_asset.total_value(), Decimal('100.00'))
-
-class InvestmentTransactionModelTest(TestCase):
-
-    def test_create_transaction_and_update_asset_quantity(self):
-        user = get_user_model().objects.create_user(username='testuser', email='test@example.com', password='testpass123')
-        investment_account = InvestmentAccount.objects.create(user=user)
-        asset = Asset.objects.create(name='Test Asset', value=Decimal('50.00'))
-        investment_asset = InvestmentAsset.objects.create(
-            investment_account=investment_account,
-            asset=asset,
-            quantity_have=Decimal('2')
-        )
+    def test_update_sell_investment_transaction_with_not_enought_quantity_have(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
 
         transaction = InvestmentTransaction.objects.create(
-            investment_account=investment_account,
-            asset=investment_asset,
-            quantity=Decimal('1'),
-            date=date.today(),
-            initial_value=Decimal('50.00'),
-            type_transaction='buy'
-        )
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=8,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        transaction.quantity = 11 # Zwiększenie ilości o 1
+        with self.assertRaises(ValidationError):
+            transaction.save()
 
-        investment_asset.refresh_from_db()
+        self.assertEquals(self.investment_asset.quantity_have, 2)
+        self.assertEquals(self.investment_asset.total_value, 160)
+        self.assertEquals(self.account.amount_to_invest, 800)
+        self.assertEquals(self.account.total_investment, 160)
+        self.assertEquals(self.account.balance, 960)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 960)
 
-        self.assertEqual(transaction.quantity, Decimal('1'))
-        self.assertEqual(investment_asset.quantity_have, Decimal('3'))
+    def test_update_sell_investment_transaction_with_ennought_quantity_have(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
 
-class ActiveInvestmentAccountModelTest(TestCase):
+        transaction = InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=8,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        transaction.quantity = 7
+        transaction.save()
 
-    def test_create_active_investment_account(self):
-        # Create and save a User instance
-        user = get_user_model().objects.create_user(username='testuser', email='test@example.com', password='testpass123')
+        self.assertEquals(self.investment_asset.quantity_have, 3)
+        self.assertEquals(self.investment_asset.total_value, 240)
+        self.assertEquals(self.account.amount_to_invest, 700)
+        self.assertEquals(self.account.total_investment, 240)
+        self.assertEquals(self.account.balance, 940)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 940)
 
-        # Create and save an InvestmentAccount instance
-        investment_account = InvestmentAccount.objects.create(
-            user=user,
-            # Set other necessary fields of InvestmentAccount
-        )
+        transaction.quantity = 9
+        transaction.save()
 
-        # Now that investment_account is saved, create ActiveInvestmentAccount
-        active_investment_account = ActiveInvestmentAccount.objects.create(
-            user=user,
-            investment_account=investment_account
-        )
+        self.assertEquals(self.investment_asset.quantity_have, 1)
+        self.assertEquals(self.investment_asset.total_value, 80)
+        self.assertEquals(self.account.amount_to_invest, 900)
+        self.assertEquals(self.account.total_investment, 80)
+        self.assertEquals(self.account.balance, 980)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 980)
 
-        # Perform your assertions here
-        self.assertEqual(active_investment_account.user, user)
-        self.assertEqual(active_investment_account.investment_account, investment_account)
+    def test_update_asset_value(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        self.asset.value=100
+        self.asset.save()
+        self.investment_asset.save()
+        self.account.save()
+        self.investment_asset.refresh_from_db()
+        self.account.refresh_from_db()
+
+        self.assertEquals(self.investment_asset.quantity_have, 10)
+        self.assertEquals(self.investment_asset.total_value, 1000)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 1000)
 
 
+    def test_delete_asset(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        with self.assertRaises(ValidationError):
+            self.asset.delete()
+        asset2 = Asset.objects.create(name="Asset 2", value=1000)
+        self.assertTrue(Asset.objects.filter(id=asset2.id).exists())
+        asset2.delete()
+        self.assertFalse(Asset.objects.filter(id=asset2.id).exists())
 
+    def test_delete_investment_asset(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        with self.assertRaises(ValidationError):
+            self.investment_asset.delete()
+        InvestmentTransaction.objects.create(
+            asset=self.investment_asset,
+            investment_account=self.account,
+            quantity=10,
+            date = date.today(),
+            initial_value=100,
+            type_transaction=InvestmentTransaction.type_transactions.SELL)
+        self.investment_asset.delete()
+        self.assertFalse(InvestmentAsset.objects.filter(id=self.investment_asset.id).exists())
+
+
+    def test_delete_investment_account(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        with self.assertRaises(ValidationError):
+            self.account.delete()
+        InvestmentTransaction.objects.create(
+            asset=self.investment_asset,
+            investment_account=self.account,
+            quantity=10,
+            date = date.today(),
+            initial_value=100,
+            type_transaction=InvestmentTransaction.type_transactions.SELL)
+        self.account.delete()
+        self.assertFalse(InvestmentAsset.objects.filter(id=self.investment_asset.id).exists())
+        self.assertFalse(InvestmentAccount.objects.filter(id=self.account.id).exists())
+        active = ActiveAccount.objects.get(user = self.user).account
+        active.refresh_from_db()
+        self.assertEquals(active.balance, 1000)
+        self.user.refresh_from_db()
+        self.assertEquals(self.user.balance, 1000)
+
+    def test_delete_buy_transaction(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        transaction = InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        transaction.delete()
+        self.assertFalse(InvestmentTransaction.objects.filter(id=transaction.id).exists())
+        self.account.refresh_from_db()
+        self.assertEquals(self.account.amount_to_invest, 1000)
+
+    def test_delete_buy_transaction_if_no_quantity(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        transaction = InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        with self.assertRaises(ValidationError):
+            transaction.delete()
+
+
+    def test_delete_sell_transaction(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        transaction = InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        transaction.delete()
+        self.assertFalse(InvestmentTransaction.objects.filter(id=transaction.id).exists())
+        self.account.refresh_from_db()
+        self.assertEquals(self.account.amount_to_invest, 0)
+
+
+    def test_delete_sell_transaction_if_not_enought_ammount(self):
+        self.account.amount_to_invest = 1000
+        self.account.save()
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        transaction = InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.SELL
+            )
+        InvestmentTransaction.objects.create(
+                asset=self.investment_asset,
+                investment_account=self.account,
+                quantity=10,
+                date = date.today(),
+                initial_value=100,
+                type_transaction=InvestmentTransaction.type_transactions.BUY
+            )
+        with self.assertRaises(ValidationError):
+            transaction.delete()

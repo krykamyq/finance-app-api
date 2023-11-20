@@ -206,7 +206,7 @@ class PrivateUserApiTests(APITestCase):
 
         res = self.client.get(ACCOUNTS_URL)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(res.data), 3)
+        self.assertEqual(len(res.data), 4)
         account_names = {account['name'] for account in res.data}
         self.assertIn(self.account1.name, account_names)
         self.assertIn(account2.name, account_names)
