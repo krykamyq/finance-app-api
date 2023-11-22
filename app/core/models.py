@@ -37,7 +37,7 @@ class UserManager(BaseUserManager):
         user.save(using=self._db)
         account = Account.objects.create(user=user, name='Base')
         ActiveAccount.objects.create(user=user, account=account)
-        investment_account = InvestmentAccount.objects.create(user=user, name='Base')
+        investment_account = InvestmentAccount.objects.create(user=user, name='Investment Account')
         ActiveInvestmentAccount.objects.create(user=user, investment_account=investment_account)
         return user
 

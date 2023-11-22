@@ -4,6 +4,8 @@ from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.settings import api_settings
 from rest_framework.decorators import action
 from drf_spectacular.utils import extend_schema
+from django.contrib.contenttypes.models import ContentType
+
 
 from user.serializers import (
     UserSerializer,
@@ -13,7 +15,7 @@ from user.serializers import (
     AccountSerializer,
 
 )
-from core.models import ActiveAccount, Account
+from core.models import ActiveAccount, Account, InvestmentAccount
 
 
 class CreateUserView(generics.CreateAPIView):
@@ -75,7 +77,10 @@ class AccountListView(generics.ListAPIView, generics.CreateAPIView, generics.Ret
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return Account.objects.filter(user=self.request.user).order_by('-id')
+        # Pobierz wszystkie Account, które nie mają powiązanego InvestmentAccount
+        accounts = Account.objects.filter(user=self.request.user)
+        investment_accounts = InvestmentAccount.objects.all()
+        return accounts.exclude(id__in=investment_accounts.values_list('account_ptr_id', flat=True))
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
