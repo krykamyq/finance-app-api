@@ -33,6 +33,9 @@ class UpdateStockDataView(APIView):
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class AccountViewsets(viewsets.ModelViewSet):
+    """
+    API endpoint that allows users to be viewed or edited.
+    """
     permission_classes = [permissions.IsAuthenticated]
     authentication_classes = [authentication.TokenAuthentication]
     serializer_class = InvestmentAccountSerializer
@@ -43,34 +46,34 @@ class AccountViewsets(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
-class ActiveInvestmentAccountView(generics.RetrieveUpdateAPIView):
-        """Manage authenticated user."""
-        serializer_class = ActiveInvestmentAccountSerializer
-        authentication_classes = [authentication.TokenAuthentication]
-        permission_classes = [permissions.IsAuthenticated]
+class ActiveInvestmentAccountView(
+        generics.RetrieveUpdateAPIView,
+        ):
+    serializer_class = ActiveInvestmentAccountSerializer
+    authentication_classes = [authentication.TokenAuthentication]
+    permission_classes = [permissions.IsAuthenticated]
 
-        def get_queryset(self):
-            return ActiveInvestmentAccount.objects.filter(user=self.request.user)
+    def get_queryset(self):
+        return ActiveInvestmentAccount.objects.filter(user=self.request.user)
 
-        def get_object(self):
-            return self.get_queryset().first()
+    def get_object(self):
+        return self.get_queryset().first()
 
-        def get_serializer_class(self):
-            if self.request.method in ['PUT', 'PATCH']:
-                return ChangeActiveInvestmentAccountSerializer
-            return self.serializer_class
+    def get_serializer_class(self):
+        if self.request.method in ['PUT', 'PATCH']:
+            return ChangeActiveInvestmentAccountSerializer
+        return self.serializer_class
 
-        def get_serializer_context(self):
-            context = super().get_serializer_context()
-            context.update({"request": self.request})
-            return context
+    def get_serializer_context(self):
+        context = super().get_serializer_context()
+        context.update({"request": self.request})
+        return context
 
-        @extend_schema(request=ChangeActiveInvestmentAccountSerializer, methods=['PUT', 'PATCH'])
-        def put(self, request, *args, **kwargs):
-            return super().put(request, *args, **kwargs)
+    @extend_schema(request=ChangeActiveInvestmentAccountSerializer, methods=['PUT', 'PATCH'])
+    def put(self, request, *args, **kwargs):
+        return super().put(request, *args, **kwargs)
 
-        @extend_schema(request=ChangeActiveInvestmentAccountSerializer, methods=['PUT', 'PATCH'])
-        def patch(self, request, *args, **kwargs):
-            return super().patch(request, *args, **kwargs)
-
+    @extend_schema(request=ChangeActiveInvestmentAccountSerializer, methods=['PUT', 'PATCH'])
+    def patch(self, request, *args, **kwargs):
+        return super().patch(request, *args, **kwargs)
 

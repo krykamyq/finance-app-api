@@ -10,9 +10,9 @@ router = DefaultRouter()
 router.register(r'InvestmentsAccounts', AccountViewsets, basename='account-investment')
 
 urlpatterns = [
-    path('api/assets/', AssetList.as_view(), name='load_assets'),
+    path('api/assets/', AssetList.as_view(), name='assets_list'),
     path('api/update_stock_data/', UpdateStockDataView.as_view(), name='update_stock_data'),
-    path('active-account/', ActiveInvestmentAccountView.as_view(), name='active-account'),
+    path('active-account/', ActiveInvestmentAccountView.as_view(), name='active-investment-account'),
 ]
 
 urlpatterns += router.urls

@@ -326,6 +326,9 @@ class InvestmentAccount(Account):
             super(InvestmentAccount, self).delete(*args, **kwargs)
             active.save()
 
+    def __str__(self):
+        return f"{self.user.username}'s investment account: {self.name}"
+
 
 class ActiveInvestmentAccount(models.Model):
     """Active investment account model"""
@@ -339,6 +342,9 @@ class ActiveInvestmentAccount(models.Model):
         on_delete=models.CASCADE,
         related_name='active_investment_for_user'
     )
+
+    def __str__(self):
+        return f"{self.user.username}'s active investment account: {self.investment_account.name}"
 
 
 class Asset(models.Model):

@@ -43,30 +43,24 @@ class SellAssetSerializer(serializers.ModelSerializer):
         read_only_fields = ['id']
 
 class ActiveInvestmentAccountSerializer(serializers.ModelSerializer):
-    investment_account  = InvestmentAccountSerializer()
+    investment_account  = InvestmentAccountSerializer(many=False)
     class Meta:
         model = ActiveInvestmentAccount
         fields = ['investment_account']
 
 
 class ChangeActiveInvestmentAccountSerializer(serializers.Serializer):
-    account_id = serializers.IntegerField()
+    investment_account_id = serializers.IntegerField()
 
-    def validate_account_id(self, value):
+    def validate_investment_account_id(self, value):
         user = self.context['request'].user
         if not InvestmentAccount.objects.filter(id=value, user=user).exists():
             raise serializers.ValidationError("Account not found or does not belong to the user.")
         return value
 
     def update(self, instance, validated_data):
-        account_id = validated_data.get('account_id')
-        new_account = InvestmentAccount.objects.get(id=account_id)
+        investment_account_id = validated_data.get('investment_account_id')
+        new_account = InvestmentAccount.objects.get(id=investment_account_id)
         instance.investment_account = new_account
         instance.save()
         return instance
-
-
-
-
-
-
